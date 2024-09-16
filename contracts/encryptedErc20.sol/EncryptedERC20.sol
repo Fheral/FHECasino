@@ -70,6 +70,13 @@ contract EncryptedERC20 is Ownable2Step {
         return balances[wallet];
     }
 
+
+    // Returns the balance handle of the caller.
+    function b(address wallet) public view virtual returns (euint64) {
+        return balances[wallet];
+    }
+
+
     // Sets the `encryptedAmount` as the allowance of `spender` over the caller's tokens.
     function approve(address spender, einput encryptedAmount, bytes calldata inputProof) public virtual returns (bool) {
         approve(spender, TFHE.asEuint64(encryptedAmount, inputProof));
