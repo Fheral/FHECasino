@@ -20,4 +20,4 @@ const getTheAbi = (name) => {
   }
 };
 
-getTheAbi("EncryptedERC20");
+getTheAbi("PrivatePool");
