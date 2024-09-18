@@ -13,22 +13,27 @@ contract PrivatePool {
     }
 
     euint8 internal NO_ERROR;
-    euint8 internal ERROR;
+    euint8 internal NOT_ENOUGH_FOUND;
     euint64 internal ZERO;
+    euint64 public eBalanceTotal;
 
     mapping(address => LastError) public _lastErrors;
 
-    IEncryptedERC20 public token; // L'adresse du token ERC-20
-    mapping(address => euint64) public eBalances; // Mapping pour suivre les dépôts de chaque utilisateur
+    IEncryptedERC20 public token;
+    mapping(address => euint64) public eBalances;
+
     event ErrorChanged(address indexed user);
 
     constructor(address _tokenAddress) {
-        token = IEncryptedERC20(_tokenAddress); // Initialiser l'adresse du token ERC-20
+        token = IEncryptedERC20(_tokenAddress);
         NO_ERROR = TFHE.asEuint8(0);
-        ERROR = TFHE.asEuint8(1);
+        NOT_ENOUGH_FOUND = TFHE.asEuint8(1);
         ZERO = TFHE.asEuint64(0);
-
-        //TFHE.allow(eBalances, address(this));
+        eBalanceTotal = TFHE.asEuint64(0);
+        TFHE.allow(ZERO, address(this));
+        TFHE.allow(eBalanceTotal, address(this));
+        TFHE.allow(NO_ERROR, address(this));
+        TFHE.allow(NOT_ENOUGH_FOUND, address(this));
     }
 
     function setLastError(euint8 error, address addr) private {
@@ -36,37 +41,67 @@ contract PrivatePool {
         emit ErrorChanged(addr);
     }
 
-    // Fonction pour déposer des tokens dans la pool
     function deposit(einput _eAmount, bytes calldata inputProof) external {
         euint64 eAmount = TFHE.asEuint64(_eAmount, inputProof);
+        TFHE.allow(eAmount, address(this));
 
         ebool eIsNotZero = TFHE.gt(eAmount, ZERO);
+        setLastError(TFHE.select(eIsNotZero, NO_ERROR, NOT_ENOUGH_FOUND), msg.sender);
 
-        setLastError(TFHE.select(eIsNotZero, NO_ERROR, ERROR), msg.sender);
+        euint64 eAddingBalance = TFHE.add(eBalances[msg.sender], TFHE.select(eIsNotZero, eAmount, ZERO));
+        TFHE.allow(eAddingBalance, address(this));
 
-        eBalances[msg.sender] = TFHE.add(eBalances[msg.sender], TFHE.select(eIsNotZero, eAmount, ZERO));
+        eBalances[msg.sender] = TFHE.add(eBalances[msg.sender], eAddingBalance);
+        TFHE.add(eBalanceTotal, eAddingBalance);
+
+        require(
+            token.transferFrom(msg.sender, address(this), _eAmount, inputProof),
+            "echec transferFrom deposit erc20 to smart coontract"
+        );
+        //TFHE.allow(eAmount, msg.sender);
+
+        // require(token.transferFrom(msg.sender, address(this), eAmount), "echec transferFrom");
+    }
+
+    function testDeposit(einput _eAmount, bytes calldata inputProof) external {
+        euint64 eAmount = TFHE.asEuint64(_eAmount, inputProof);
+        TFHE.allow(eAmount, address(this));
+        ebool eIsNotZero = TFHE.gt(eAmount, ZERO);
+        setLastError(TFHE.select(eIsNotZero, NO_ERROR, NOT_ENOUGH_FOUND), msg.sender);
+        euint64 eAddingBalance = TFHE.add(eBalances[msg.sender], TFHE.select(eIsNotZero, eAmount, ZERO));
+        TFHE.allow(eAddingBalance, address(this));
+        eBalances[msg.sender] = TFHE.add(eBalances[msg.sender], eAddingBalance);
+        TFHE.add(eBalanceTotal, eAddingBalance);
+
+        // eBalances[msg.sender] = TFHE.add(eBalances[msg.sender], TFHE.select(eIsNotZero, eAmount, ZERO));
     }
 
     // Fonction pour envoyer des tokens à une adresse spécifique
     function withdraw(einput _eAmount, bytes calldata inputProof) external {
         euint64 eAmount = TFHE.asEuint64(_eAmount, inputProof);
 
+        TFHE.allow(eAmount, address(this));
+
         ebool eIsNotZero = TFHE.gt(eAmount, ZERO);
         ebool eBalanceNotZero = TFHE.gt(eBalances[msg.sender], ZERO);
 
-        setLastError(TFHE.select(eIsNotZero, NO_ERROR, ERROR), msg.sender);
-        setLastError(TFHE.select(eBalanceNotZero, NO_ERROR, ERROR), msg.sender);
+        setLastError(TFHE.select(eIsNotZero, NO_ERROR, NOT_ENOUGH_FOUND), msg.sender);
+        setLastError(TFHE.select(eBalanceNotZero, NO_ERROR, NOT_ENOUGH_FOUND), msg.sender);
 
-        //ebool eTwoCondition = TFHE.select(NO_ERROR, a, b);
-
-        eBalances[msg.sender] = TFHE.sub(
+        euint64 eSubBalance = TFHE.sub(
             TFHE.select(eBalanceNotZero, eBalances[msg.sender], ZERO),
             TFHE.select(eIsNotZero, eAmount, ZERO)
         );
+
+        /*  eBalances[msg.sender] = TFHE.sub(
+            TFHE.select(eBalanceNotZero, eBalances[msg.sender], ZERO),
+            TFHE.select(eIsNotZero, eAmount, ZERO)
+        );*/
+        TFHE.allow(eSubBalance, address(this));
+        TFHE.sub(eBalanceTotal, eSubBalance);
     }
 
-    // Fonction pour consulter le solde de l'utilisateur dans la pool
-    function getUserBalance() external view returns (uint256) {
-        //  return balances[msg.sender];
+    function getBalanceDepositUser() public view returns (euint64) {
+        return eBalances[msg.sender];
     }
 }
