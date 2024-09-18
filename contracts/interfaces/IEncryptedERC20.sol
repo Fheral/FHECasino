@@ -33,5 +33,5 @@ interface IEncryptedERC20 {
         einput encryptedAmount,
         bytes calldata inputProof
     ) external returns (bool);
-    //function transferFrom(address from, address to, euint64 amount) external returns (bool);
+    function transferFrom(address from, address to, euint64 amount) external returns (bool);
 }

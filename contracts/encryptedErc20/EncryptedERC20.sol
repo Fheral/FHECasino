@@ -14,6 +14,7 @@ contract EncryptedERC20 is Ownable2Step {
     string private _name;
     string private _symbol;
     uint8 public constant decimals = 6;
+    bool isMint = false;
 
     // A mapping from address to an encrypted balance.
     mapping(address => euint64) internal balances;
@@ -43,6 +44,7 @@ contract EncryptedERC20 is Ownable2Step {
 
     // Sets the balance of the owner to the given encrypted balance.
     function mint(uint64 mintedAmount) public virtual onlyOwner {
+        require(!isMint, "is already Mint");
         balances[owner()] = TFHE.add(balances[owner()], mintedAmount); // overflow impossible because of next line
         TFHE.allow(balances[owner()], address(this));
         TFHE.allow(balances[owner()], owner());
