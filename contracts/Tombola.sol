@@ -94,6 +94,20 @@ contract Tombola {
         return TFHE.randEuint64();
     }
 
+    function getWinner(uint32 i, euint64 minDifference, euint64 randomNumber) internal {
+        require(TFHE.isSenderAllowed(minDifference), "The caller is not authorized to access this secret.");
+        require(TFHE.isSenderAllowed(randomNumber), "The caller is not authorized to access this secret.");
+
+        euint64 eRandomNumberUser = randomUsers[i].eRandomUsers;
+        eaddress eAddressUser = randomUsers[i].eAddress;
+
+        euint64 difference = TFHE.sub(eRandomNumberUser, randomNumber);
+        ebool isSmaller = TFHE.lt(difference, minDifference);
+
+        minDifference = TFHE.select(isSmaller, difference, minDifference);
+        winner = TFHE.select(isSmaller, eAddressUser, winner);
+    }
+
     function pickWinner() external {
         require(block.timestamp >= endTime, "Tombola is still ongoing");
         require(participantsLength > 0, "No participants");
@@ -106,14 +120,7 @@ contract Tombola {
         TFHE.allowTransient(minDifference, address(this));
 
         for (uint32 i = 0; i < participantsLength; i++) {
-            euint64 eRandomNumberUser = randomUsers[i].eRandomUsers;
-            eaddress eAddressUser = randomUsers[i].eAddress;
-
-            euint64 difference = TFHE.sub(eRandomNumberUser, randomNumber);
-            ebool isSmaller = TFHE.lt(difference, minDifference);
-
-            minDifference = TFHE.select(isSmaller, difference, minDifference);
-            winner = TFHE.select(isSmaller, eAddressUser, winner);
+            getWinner(i, minDifference, randomNumber);
         }
 
         TFHE.allow(winner, address(this));
