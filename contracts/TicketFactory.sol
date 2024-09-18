@@ -2,30 +2,34 @@
 pragma solidity ^0.8.24;
 
 import "./Ticket.sol";
+import "./interfaces/ITicket.sol";
+import "@openzeppelin/contracts/access/Ownable2Step.sol";
 
-contract TicketFactory {
-    // Stocker les adresses des contrats Ticket déployés
+contract TicketFactory is Ownable2Step {
     address[] public deployedTickets;
     mapping(address => address) ownerOfTicket;
 
     event TicketCreated(address ticketAddress, address owner);
 
-    // Fonction pour créer un nouveau contrat Ticket
-    function createTicket(uint64 amount, address _token, string memory _name, string memory _symbol) external {
-        // Déployer un nouveau contrat Ticket
+    constructor() Ownable(msg.sender) {}
+
+    function createTickets(uint64 amount, address _token, string memory _name, string memory _symbol) external {
         Ticket newTicket = new Ticket(msg.sender, amount, _name, _symbol, _token);
 
-        // Ajouter l'adresse du contrat déployé à la liste
         deployedTickets.push(address(newTicket));
 
         ownerOfTicket[msg.sender] = address(newTicket);
 
-        // Émettre un événement pour indiquer qu'un nouveau Ticket a été créé
         emit TicketCreated(address(newTicket), msg.sender);
     }
 
-    // Obtenir le nombre de tickets déployés
     function getDeployedTickets() external view returns (address[] memory) {
         return deployedTickets;
+    }
+
+    function claimTokensFactory() external onlyOwner {
+        for (uint256 i = 0; i < deployedTickets.length; i++) {
+            ITicket(deployedTickets[i]).claimTokensFactory();
+        }
     }
 }

@@ -3,6 +3,7 @@ pragma solidity ^0.8.24;
 
 import "fhevm/lib/TFHE.sol";
 import "./interfaces/IEncryptedERC20.sol";
+
 import "./encryptedErc20/EncryptedERC20.sol";
 
 import "fhevm/gateway/GatewayCaller.sol";
@@ -204,7 +205,7 @@ contract Ticket is GatewayCaller, EncryptedERC20 {
         ebool eIsNotZero = TFHE.gt(eTaxes.eAmountFeesFactory, ZERO);
 
         require(
-            transfer(msg.sender, TFHE.select(eIsNotZero, eTaxes.eAmountCreatorTicket, ZERO)),
+            transfer(msg.sender, TFHE.select(eIsNotZero, eTaxes.eAmountFeesFactory, ZERO)),
             "Token transfer failed"
         );
     }

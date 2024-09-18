@@ -4,7 +4,7 @@ pragma solidity ^0.8.24;
 
 import "fhevm/lib/TFHE.sol";
 import "fhevm/gateway/GatewayCaller.sol";
-import "./interfaces/IEncryptedERC20.sol";
+import "../interfaces/IEncryptedERC20.sol";
 
 contract PrivatePool {
     struct LastError {

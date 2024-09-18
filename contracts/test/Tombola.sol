@@ -2,7 +2,7 @@
 pragma solidity ^0.8.24;
 
 import "fhevm/lib/TFHE.sol";
-import "./interfaces/IEncryptedERC20.sol";
+import "../interfaces/IEncryptedERC20.sol";
 // import "fhevm-contracts/contracts/utils/EncryptedErrors.sol";
 import "fhevm/gateway/GatewayCaller.sol";
 
