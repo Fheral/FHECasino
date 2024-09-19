@@ -25,45 +25,49 @@ contract Ticket is GatewayCaller, EncryptedERC20 {
         address factoryAddr;
     }
 
-    Taxes private eTaxes;
-    Owners public owners;
-
-    eaddress private eWinner;
-    address private winnerDecrypt;
-
-    euint64 public eNumberWin;
-    uint64 public numberWinDecrypt;
-
-    IEncryptedERC20 public token;
-    uint256 public ticketPrice;
-
-    uint256 public endTime = 0;
-    uint64 participantsLength = 0;
-    bool isFinish = false;
-
-    uint limitedTicket = 0;
-
-    euint64 eAmountWinner;
-
-    mapping(uint64 => Participant) participants;
-    event TicketPurchased(address indexed participant);
-    event WinnerPicked(uint);
-
     struct LastError {
         euint8 error;
         uint timestamp;
     }
 
+    IEncryptedERC20 public token;
+
+    Taxes private eTaxes;
+    Owners public owners;
+
+    eaddress private eWinner;
+    address public winnerDecrypt;
+
+    euint64 public eNumberWin;
+    uint64 public numberWinDecrypt;
+
+    euint64 eAmountWinner;
+
+    uint64 participantsLength = 0;
+
+    uint256 public ticketPrice;
+    uint256 public endTime = 0;
+
+    bool isFinish = false;
+
+    uint limitedTicket = 0;
+
+    mapping(uint64 => Participant) participants;
+    event TicketPurchased(address indexed participant);
+    event WinnerPicked(uint);
+
     euint8 internal NO_ERROR;
     euint8 internal ERROR;
     euint64 internal ZERO;
+
+    euint64 closestDifference;
 
     mapping(address => LastError) public _lastErrors;
     event ErrorChanged(address indexed user);
 
     constructor(
         address _owner,
-        uint64 amount,
+        uint amount,
         string memory _name,
         string memory _symbol,
         address _tokenAddress
@@ -76,17 +80,19 @@ contract Ticket is GatewayCaller, EncryptedERC20 {
         eTaxes.eTaxFactory = TFHE.asEuint64(1);
         eTaxes.eAmountCreatorTicket = TFHE.asEuint64(0);
         eTaxes.eAmountFeesFactory = TFHE.asEuint64(0);
-        //  eTaxes.eTaxFactory(TFHE.asEuint64(1));
+        closestDifference = TFHE.asEuint64(type(uint64).max);
 
         NO_ERROR = TFHE.asEuint8(0);
         ERROR = TFHE.asEuint8(1);
         ZERO = TFHE.asEuint64(0);
-        eAmountWinner = TFHE.asEuint64(0);
 
+        eAmountWinner = TFHE.asEuint64(0);
         eWinner = TFHE.asEaddress(address(0));
         eNumberWin = TFHE.asEuint64(0);
+
         transferOwnership(address(this));
-        mint(amount);
+        mint(uint64(amount));
+
         TFHE.allow(ZERO, address(this));
         TFHE.allow(eNumberWin, address(this));
         TFHE.allow(eWinner, address(this));
@@ -96,22 +102,48 @@ contract Ticket is GatewayCaller, EncryptedERC20 {
         TFHE.allow(eTaxes.eTaxCreatorTicket, address(this));
         TFHE.allow(eTaxes.eAmountCreatorTicket, address(this));
         TFHE.allow(eTaxes.eAmountFeesFactory, address(this));
+        TFHE.allow(closestDifference, address(this));
     }
 
-    function requestAddress() internal {
+    modifier onlyWinner() {
+        require(msg.sender == winnerDecrypt, "Caller is not the winner");
+        _;
+    }
+
+    modifier onlyFactory() {
+        require(msg.sender == owners.factoryAddr, "Caller is not the factory");
+        _;
+    }
+
+    modifier onlyCreatorTickets() {
+        require(msg.sender == owners.creatorTicket, "Caller is not the creator of tickets");
+        _;
+    }
+
+    function requestAddress() public {
         uint256[] memory cts = new uint256[](1);
         cts[0] = Gateway.toUint256(eWinner);
         Gateway.requestDecryption(cts, this.addressWinCallback.selector, 0, block.timestamp + 100, false);
     }
 
+    function hoho() public {
+        uint256[] memory cts = new uint256[](1);
+        cts[0] = Gateway.toUint256(eWinner);
+        Gateway.requestDecryption(cts, this.addressWinCallback.selector, 0, block.timestamp + 100, false);
+    }
+
+    function getWinner() public view returns (address) {
+        return winnerDecrypt;
+    }
+
     function addressWinCallback(uint256 /*requestID*/, address decryptedInput) public onlyGateway returns (address) {
         winnerDecrypt = decryptedInput;
-        return winnerDecrypt;
+        return decryptedInput;
     }
 
     function numberWinCallback(uint256 /*requestID*/, uint64 decryptedInput) public onlyGateway returns (uint64) {
         numberWinDecrypt = decryptedInput;
-        return numberWinDecrypt;
+        return decryptedInput;
     }
 
     function requestNumberWin() internal {
@@ -120,7 +152,7 @@ contract Ticket is GatewayCaller, EncryptedERC20 {
         Gateway.requestDecryption(cts, this.numberWinCallback.selector, 0, block.timestamp + 100, false);
     }
 
-    function start(uint256 _ticketPrice, uint256 _duration, uint256 _limitedTicked) private {
+    function start(uint256 _ticketPrice, uint256 _duration, uint256 _limitedTicked) public {
         ticketPrice = _ticketPrice;
         endTime = block.timestamp + _duration;
         limitedTicket = _limitedTicked;
@@ -134,16 +166,18 @@ contract Ticket is GatewayCaller, EncryptedERC20 {
     function buyTicket(einput _eUser, einput _eAmount, bytes calldata inputProof) external {
         require(endTime > 0, "the tombola is not starting ");
 
-        require(block.timestamp < endTime, "Tombola has ended");
+        require(block.timestamp <= endTime, "Tombola has ended");
 
         euint64 eAmount = TFHE.asEuint64(_eAmount, inputProof);
+        TFHE.allow(eAmount, address(this));
 
         eaddress eUser = TFHE.asEaddress(_eUser, inputProof);
+        TFHE.allow(eUser, address(this));
 
         setLastError(TFHE.select(TFHE.gt(eAmount, ZERO), NO_ERROR, ERROR), msg.sender);
 
-        euint64 randomNumber = getRandom();
-        TFHE.allowTransient(randomNumber, address(this));
+        euint64 randomNumber = TFHE.randEuint64();
+        TFHE.allow(randomNumber, address(this));
         TFHE.allow(randomNumber, msg.sender);
 
         participants[participantsLength] = Participant(eUser, randomNumber);
@@ -158,36 +192,16 @@ contract Ticket is GatewayCaller, EncryptedERC20 {
         emit TicketPurchased(msg.sender);
     }
 
-    function getRandom() public returns (euint64) {
-        return TFHE.randEuint64();
-    }
-
-    function selectWinner(uint32 i, euint64 minDifference, euint64 randomNumber) internal returns (euint64) {
-        require(TFHE.isSenderAllowed(minDifference), "The caller is not authorized to access this secret.");
-        require(TFHE.isSenderAllowed(randomNumber), "The caller is not authorized to access this secret.");
-
-        euint64 difference = TFHE.sub(participants[i].eNumberRandom, randomNumber);
-        ebool isSmaller = TFHE.lt(difference, minDifference);
-
-        eWinner = TFHE.select(isSmaller, participants[i].eAddress, eWinner);
-        return TFHE.select(isSmaller, difference, minDifference);
-    }
-
-    // Fonction pour permettre aux utilisateurs de réclamer des tokens
-    function claimTokensWinner() external {
+    function claimTokensWinner() external onlyWinner {
         require(isFinish, "Tombola is over");
-
-        require(winnerDecrypt == msg.sender, "Not authorized");
 
         ebool eIsNotZero = TFHE.gt(eAmountWinner, ZERO);
 
         require(transfer(msg.sender, TFHE.select(eIsNotZero, eAmountWinner, ZERO)), "Token transfer failed");
     }
 
-    function claimTokensCreator() external {
+    function claimTokensCreator() external onlyCreatorTickets {
         require(isFinish, "Tombola is over");
-
-        require(owners.creatorTicket == msg.sender, "Not authorized");
 
         ebool eIsNotZero = TFHE.gt(eTaxes.eAmountCreatorTicket, ZERO);
 
@@ -197,10 +211,8 @@ contract Ticket is GatewayCaller, EncryptedERC20 {
         );
     }
 
-    function claimTokensFactory() external {
+    function claimTokensFactory() external onlyFactory {
         require(isFinish, "Tombola is over");
-
-        require(owners.factoryAddr == msg.sender, "Not authorized");
 
         ebool eIsNotZero = TFHE.gt(eTaxes.eAmountFeesFactory, ZERO);
 
@@ -214,9 +226,11 @@ contract Ticket is GatewayCaller, EncryptedERC20 {
         return balanceOf(address(this));
     }
 
-    // Fonction pour répartir les gains
-    function distributeProfits() external onlyOwner {
-        euint64 totalAmount = balanceOf(address(this));
+    function distributeProfits() internal {
+        euint64 totalAmount = token.balanceOf(address(this));
+        TFHE.allow(totalAmount, address(this));
+
+        //TFHE.allowTransient(totalAmount, address(this));
 
         euint64 tempCreator = TFHE.div(TFHE.mul(totalAmount, eTaxes.eTaxFactory), 100);
         eTaxes.eAmountCreatorTicket = TFHE.select(TFHE.gt(tempCreator, ZERO), tempCreator, ZERO);
@@ -233,30 +247,60 @@ contract Ticket is GatewayCaller, EncryptedERC20 {
         );
     }
 
+    function selectWinner(uint32 i, euint64 minDifference, euint64 randomNumber) internal returns (euint64) {
+        /*   require(TFHE.isSenderAllowed(minDifference), "The caller is not authorized to access this secret.");
+        require(TFHE.isSenderAllowed(randomNumber), "The caller is not authorized to access this secret.");*/
+        // TFHE.allow(participants[i].eNumberRandom, address(this));
+
+        euint64 difference = TFHE.sub(participants[i].eNumberRandom, randomNumber);
+
+        ebool isSmaller = TFHE.lt(difference, minDifference);
+
+        eWinner = TFHE.select(isSmaller, participants[i].eAddress, eWinner);
+        return TFHE.select(isSmaller, difference, minDifference);
+    }
+
     function pickWinner() external {
         require(!isFinish, "Tombola is over");
         require(block.timestamp >= endTime, "Tombola is still ongoing");
         require(participantsLength > 0, "No participants");
-        ebool eIsNotZero = TFHE.gt(balanceOf(address(this)), ZERO);
 
-        euint64 eBalance = balanceOf(address(this));
-        TFHE.allowTransient(eBalance, address(this));
+        //euint64 eBalance = balanceOf(address(this));
 
-        setLastError(TFHE.select(eIsNotZero, NO_ERROR, ERROR), msg.sender);
+        //TFHE.allow(eBalance, address(this));
+        // TFHE.allowTransient(eBalance, msg.sender);
 
-        euint64 randomNumber = getRandom();
-        euint64 minDifference = TFHE.sub(randomNumber, randomNumber);
+        // ebool eIsNotZero = TFHE.gt(eBalance, ZERO);
 
-        TFHE.allowTransient(minDifference, address(this));
+        //  setLastError(TFHE.select(eIsNotZero, NO_ERROR, ERROR), msg.sender);
+
+        euint64 randomNumber = TFHE.randEuint64();
+        //euint64 minDifference = TFHE.sub(randomNumber, randomNumber);
 
         for (uint32 i = 0; i < participantsLength; i++) {
-            minDifference = selectWinner(i, minDifference, randomNumber);
+            euint64 difference = TFHE.select(
+                TFHE.gt(participants[i].eNumberRandom, randomNumber),
+                TFHE.sub(randomNumber, participants[i].eNumberRandom),
+                TFHE.sub(participants[i].eNumberRandom, randomNumber)
+            );
+            // euint64 difference = absDifference(participants[i].eNumberRandom, randomNumber);
+
+            ebool isSmaller = TFHE.lt(difference, closestDifference);
+
+            eWinner = TFHE.select(isSmaller, participants[i].eAddress, eWinner);
+
+            //minDifference = selectWinner(i, minDifference, randomNumber);
         }
         requestAddress();
         requestNumberWin();
-
+        distributeProfits();
         isFinish = true;
 
         emit WinnerPicked(block.timestamp);
+    }
+
+    // Calculer la différence absolue entre deux nombres chiffrés
+    function absDifference(euint64 a, euint64 b) private returns (euint64) {
+        return TFHE.select(TFHE.gt(a, b), TFHE.sub(b, a), TFHE.sub(a, b));
     }
 }

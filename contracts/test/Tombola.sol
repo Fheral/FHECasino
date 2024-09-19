@@ -11,6 +11,10 @@ contract Tombola is GatewayCaller {
         eaddress eAddress;
         euint64 eRandomUsers;
     }
+    struct LastError {
+        euint8 error;
+        uint timestamp;
+    }
 
     eaddress private eWinner;
     address private winnerDecrypt;
@@ -30,11 +34,6 @@ contract Tombola is GatewayCaller {
     mapping(uint64 => Participant) randomUsers;
     event TicketPurchased(address indexed participant);
     event WinnerPicked(uint);
-
-    struct LastError {
-        euint8 error;
-        uint timestamp;
-    }
 
     euint8 internal NO_ERROR;
     euint8 internal ERROR;

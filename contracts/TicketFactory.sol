@@ -13,7 +13,7 @@ contract TicketFactory is Ownable2Step {
 
     constructor() Ownable(msg.sender) {}
 
-    function createTickets(uint64 amount, address _token, string memory _name, string memory _symbol) external {
+    function createTickets(uint amount, address _token, string memory _name, string memory _symbol) external {
         Ticket newTicket = new Ticket(msg.sender, amount, _name, _symbol, _token);
 
         deployedTickets.push(address(newTicket));
